@@ -17,10 +17,10 @@ sealed trait RaftMessage
 case class AppendEntries(
   term: Term,
   leaderId: ActorRef,
-  prevLogIndex: Long,
+  prevLogIndex: Int,
   prevLogTerm: Term,
-  entries: Seq[String],
-  leaderCommit: Long
+  entries: Seq[LogEntry],
+  leaderCommit: Int
 ) extends RaftMessage
 
 /**

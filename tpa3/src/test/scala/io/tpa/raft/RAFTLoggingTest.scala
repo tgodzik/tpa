@@ -16,26 +16,8 @@ class RAFTLoggingTest
 
   behavior of classOf[ServerStateActor].getSimpleName
 
-  def retryMessageUntilAck(ref: ActorRef, msg: Any, response: Any) = {
-    awaitAssert({
-      ref ! msg
-      expectMsg(100.millis, response)
-    },
-      3.seconds,
-      1.second
-    )
-  }
-
-  def startActors(maxActors: Int): (ActorRef, Seq[ActorRef]) = {
-    val names = (0 until maxActors).map(name => s"a$name")
-    val paths = names.map {
-      name =>
-        (system / name).toString
-    }
-    val router = system.actorOf(BroadcastGroup(paths).props(), "router")
-    val routees = names.map(name => system.actorOf(ServerStateActor.props(maxActors, router), name))
-    (router, routees)
-  }
+  // TODO - more complicated test
+  // TODO - add some stats
 
   it should "log messages and respond" in {
     val (all, _) = startActors(5)
@@ -95,5 +77,26 @@ class RAFTLoggingTest
 
     all ! GetFullLog
     expectNoMsg()
+  }
+
+  private def retryMessageUntilAck(ref: ActorRef, msg: Any, response: Any) = {
+    awaitAssert({
+      ref ! msg
+      expectMsg(100.millis, response)
+    },
+      3.seconds,
+      1.second
+    )
+  }
+
+  private def startActors(maxActors: Int): (ActorRef, Seq[ActorRef]) = {
+    val names = (0 until maxActors).map(name => s"a$name")
+    val paths = names.map {
+      name =>
+        (system / name).toString
+    }
+    val router = system.actorOf(BroadcastGroup(paths).props(), "router")
+    val routees = names.map(name => system.actorOf(ServerStateActor.props(maxActors, router), name))
+    (router, routees)
   }
 }

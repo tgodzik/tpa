@@ -8,4 +8,7 @@ case class Term(termId : Long = 0l) {
 
   def next() = Term(termId + 1)
 
+  def <(otherTerm : Term) = termId < otherTerm.termId
+
+  def >(otherTerm : Term) = termId > otherTerm.termId
 }

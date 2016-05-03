@@ -35,7 +35,9 @@ sealed abstract class ServerData {
 case class CandidateData(
   currentTerm: Term,
   votedFor: Option[ActorRef],
-  log: Seq[LogEntry]
+  log: Seq[LogEntry],
+  commitIndex : Int,
+  lastApplied : Int
 ) extends ServerData
 
 /**
@@ -48,11 +50,13 @@ case class CandidateData(
 case class FollowerData(
   currentTerm: Term,
   votedFor: Option[ActorRef],
-  log: Seq[LogEntry]
+  log: Seq[LogEntry],
+  commitIndex : Int,
+  lastApplied : Int
 ) extends ServerData
 
 object FollowerData {
-  def empty = FollowerData(Term(), None, Seq.empty)
+  def empty = FollowerData(Term(), None, Seq.empty, 0, 0)
 }
 
 /**
@@ -69,5 +73,7 @@ case class LeaderData(
    votedFor: Option[ActorRef],
    log: Seq[LogEntry],
    nextIndex : Map[ActorRef, Long],
-   matchIndex : Map[ActorRef, Long]
-                     ) extends ServerData
+   matchIndex : Map[ActorRef, Long],
+   commitIndex : Int,
+   lastApplied : Int
+) extends ServerData

@@ -3,7 +3,11 @@ package io.tpa.raft.model
 import akka.actor.ActorRef
 
 
-sealed trait RaftMessage
+sealed trait RaftMessage {
+
+  def term : Term
+
+}
 
 /**
   * AppendEntries RPC message
@@ -19,7 +23,7 @@ case class AppendEntries(
   leaderId: ActorRef,
   prevLogIndex: Long,
   prevLogTerm: Term,
-  entries: Seq[String],
+  entries: Seq[LogEntry],
   leaderCommit: Long
 ) extends RaftMessage
 

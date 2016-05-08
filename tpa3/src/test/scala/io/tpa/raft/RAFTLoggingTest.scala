@@ -5,14 +5,17 @@ import akka.routing.BroadcastGroup
 import akka.testkit.{ImplicitSender, TestKit}
 import io.tpa.raft.actor.ServerStateActor
 import io.tpa.raft.model.{FullLog, GetFullLog, Log, LogAck}
-import org.scalatest.{FlatSpecLike, Matchers}
+import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, Matchers}
+
 import scala.concurrent.duration._
+import scala.util.Random
 
 class RAFTLoggingTest
   extends TestKit(ActorSystem("RAFTLoggingTest"))
     with ImplicitSender
     with FlatSpecLike
-    with Matchers {
+    with Matchers
+    with BeforeAndAfterAll{
 
   behavior of classOf[ServerStateActor].getSimpleName
 
@@ -84,19 +87,23 @@ class RAFTLoggingTest
       ref ! msg
       expectMsg(100.millis, response)
     },
-      3.seconds,
+      8.seconds,
       1.second
     )
   }
 
   private def startActors(maxActors: Int): (ActorRef, Seq[ActorRef]) = {
-    val names = (0 until maxActors).map(name => s"a$name")
+    val names = (0 until maxActors).map(name => Random.alphanumeric.take(10).toList.mkString(""))
     val paths = names.map {
       name =>
         (system / name).toString
     }
-    val router = system.actorOf(BroadcastGroup(paths).props(), "router")
+    val router = system.actorOf(BroadcastGroup(paths).props())
     val routees = names.map(name => system.actorOf(ServerStateActor.props(maxActors, router), name))
     (router, routees)
+  }
+
+  override def afterAll() = {
+    system.terminate()
   }
 }

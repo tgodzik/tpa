@@ -3,7 +3,10 @@ package io.tpa.raft.model
 import akka.actor.ActorRef
 
 
-sealed trait RaftMessage
+sealed trait RaftMessage{
+
+  def term : Term
+}
 
 /**
   * AppendEntries RPC message
@@ -27,10 +30,12 @@ case class AppendEntries(
   * AppendEntries RPC response
   * @param term currentTerm, for leader to update itself
   * @param success true if follower contained entry matching prevLogIndex and prevLogTerm
+  * @param lastApplied index which was applied if successful
   */
 case class AppendEntriesResponse(
   term: Term,
-  success: Boolean
+  success: Boolean,
+  lastApplied : Option[Int] = None
 ) extends RaftMessage
 
 /**

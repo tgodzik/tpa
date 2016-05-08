@@ -1,6 +1,6 @@
 package io.tpa.raft.model
 
-import akka.actor.ActorRef
+import akka.actor.{ActorRef, Cancellable}
 
 /**
   * Log entry for each server.
@@ -22,11 +22,7 @@ sealed abstract class StateData {
 
   def votedFor: Option[ActorRef]
 
-  def log: Seq[LogEntry]
-
-  def nextTerm : StateData
-
-  def votedFor(votedRef : ActorRef) : StateData
+  def stateLog: Seq[LogEntry]
 
 }
 
@@ -36,30 +32,31 @@ sealed abstract class StateData {
  *
   * @param currentTerm latest term server has seen (initialized to 0 on first boot, increases monotonically)
   * @param votedFor candidateId that received vote in current term
-  * @param log log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+  * @param stateLog log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
   */
 case class FollowerStateData(
-  currentTerm: Term,
-  votedFor: Option[ActorRef],
-  log: Seq[LogEntry],
-  commitIndex : Int,
-  lastApplied : Int,
-  leader : Option[ActorRef]
+                              currentTerm: Term,
+                              votedFor: Option[ActorRef],
+                              stateLog: Seq[LogEntry],
+                              commitIndex : Int,
+                              lastApplied : Int,
+                              leader : Option[ActorRef]
 ) extends StateData {
 
-  def nextTerm = this.copy(currentTerm = currentTerm.next())
+  def withNewLeader(newLeader : ActorRef, term : Term) = {
+    this.copy(currentTerm = term, votedFor = None, leader = Some(newLeader))
+  }
 
-  def votedFor(votedRef : ActorRef) = this.copy(votedFor = Some(votedRef))
+  def withNewLogEntries(
+    updatedStateLog : Seq[LogEntry],
+    updatedCommitIndex : Int,
+    updatedLastApplied : Int) = {
+    this.copy(stateLog = updatedStateLog, commitIndex = updatedCommitIndex, lastApplied = updatedLastApplied)
+  }
 
-  def withNoVotes = this.copy(votedFor = None)
-
-  def toCandidate = CandidateStateData(currentTerm, votedFor, log, 0, commitIndex, lastApplied)
-
-  def updateLog(newLog : Seq[LogEntry]) = this.copy(log = newLog)
-
-  def commit(newCommitIndex : Int) = this.copy(commitIndex = newCommitIndex)
-
-  def applyIndex(newApplyIndex : Int) = this.copy(lastApplied = newApplyIndex)
+  def toCandidate(self: ActorRef) = {
+    CandidateStateData(currentTerm.next(), Some(self), stateLog, 1, commitIndex, lastApplied)
+  }
 
   def withTerm(newTerm : Term) = this.copy(currentTerm = newTerm)
 
@@ -75,26 +72,39 @@ object FollowerStateData {
   *
   * @param currentTerm latest term server has seen (initialized to 0 on first boot, increases monotonically)
   * @param votedFor candidateId that received vote in current term
-  * @param log log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+  * @param stateLog log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
   */
 case class CandidateStateData(
-                              currentTerm: Term,
-                              votedFor: Option[ActorRef],
-                              log: Seq[LogEntry],
-                              votesReceived : Int,
-                              commitIndex : Int,
-                              lastApplied : Int
+                               currentTerm: Term,
+                               votedFor: Option[ActorRef],
+                               stateLog: Seq[LogEntry],
+                               votesReceived : Int,
+                               commitIndex : Int,
+                               lastApplied : Int
                             ) extends StateData {
 
-  def nextTerm = this.copy(currentTerm = currentTerm.next())
+  def withOneMoreVote = this.copy(votesReceived = this.votesReceived + 1)
 
-  def votedFor(votedRef : ActorRef) = this.copy(votedFor = Some(votedRef))
+  def toCandidate(self: ActorRef) = {
+    CandidateStateData(currentTerm.next(), Some(self), stateLog, 1, commitIndex, lastApplied)
+  }
 
-  def oneVote = this.copy(votesReceived = 1)
+  def toFollower(term : Term) = {
 
-  def oneMoreVote = this.copy(votesReceived = this.votesReceived + 1)
+    FollowerStateData(term, None, stateLog, commitIndex, lastApplied, None)
+  }
 
-  def toFollower = FollowerStateData(currentTerm, None, log, commitIndex, lastApplied, None)
+  def toLeader(schedule : Cancellable) = LeaderStateData(
+    currentTerm,
+    votedFor,
+    stateLog,
+    Map.empty,
+    Map.empty,
+    schedule,
+    commitIndex,
+    lastApplied,
+    Seq.empty
+  )
 }
 
 /**
@@ -102,22 +112,36 @@ case class CandidateStateData(
  *
   * @param currentTerm latest term server has seen (initialized to 0 on first boot, increases monotonically)
   * @param votedFor candidateId that received vote in current term
-  * @param log log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+  * @param stateLog log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
   * @param nextIndex for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
   * @param matchIndex  for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
   */
 case class LeaderStateData(
-   currentTerm: Term,
-   votedFor: Option[ActorRef],
-   log: Seq[LogEntry],
-   nextIndex : Map[ActorRef, Long],
-   matchIndex : Map[ActorRef, Long],
-   commitIndex : Int = 0,
-   lastApplied : Int = 0
-                     ) extends StateData{
+                            currentTerm: Term,
+                            votedFor: Option[ActorRef],
+                            stateLog: Seq[LogEntry],
+                            nextIndex : Map[ActorRef, Int],
+                            matchIndex : Map[ActorRef, Int],
+                            schedule : Cancellable,
+                            commitIndex : Int,
+                            lastApplied : Int,
+                            waitingList : Seq[WaitingItem]
+ ) extends StateData{
 
-  def nextTerm = this.copy(currentTerm = currentTerm.next())
+  def toFollower(newTerm : Term) = FollowerStateData(newTerm, None, stateLog, commitIndex, lastApplied, None)
 
-  def votedFor(votedRef : ActorRef) = this.copy(votedFor = Some(votedRef))
+  def withNewDefaultNextIndex(actor : ActorRef) = {
+    this.copy( nextIndex = nextIndex + (actor -> lastApplied), matchIndex = matchIndex + (actor -> commitIndex))
+  }
+  def withNewNextIndex(actor : ActorRef, index : Int) = this.copy( nextIndex = nextIndex + (actor -> index))
+
+  def withPreviousNextIndex(actor : ActorRef) = this.copy( nextIndex = nextIndex + (actor -> (nextIndex(actor) - 1)))
+
+  def withFollowingNextIndex (ref : ActorRef) = this.copy(nextIndex = nextIndex + (ref -> nextIndex(ref)))
+
+  def messageForIndex(index : Int) =
+    AppendEntries(currentTerm, votedFor.get, index - 1, stateLog(index - 1).term, stateLog.slice(index, stateLog.size), commitIndex)
 
 }
+
+case class WaitingItem(index : Int, seq : Long, client : ActorRef)

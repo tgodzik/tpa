@@ -8,7 +8,7 @@ The main implementation of the algorithm needs to be added to the ServerStateAct
 I has to handle all the messages in "model" package (ClientMessage and RAFTMessage).
 All needed messages are already created. Comments in each message explain exactly what each one does.
 
-Most of the needed information about raft can be found in this [document](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf).
+Most of the needed information about raft can be found in this [document](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf). Also, a really nice interactive presentation is available [here](http://thesecretlivesofdata.com/raft/)
 
 Basic tests are contained in RAFTLoggingTest. If there is a bug in them or someone thinks they should be extended just let me know.
 
